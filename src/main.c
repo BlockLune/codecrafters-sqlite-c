@@ -190,6 +190,9 @@ static int print_tables(const char *database_file_path) {
   }
 
   uint16_t *cell_offsets = malloc(sizeof(uint16_t) * cells_count);
+  if (cell_offsets == NULL) {
+    goto cleanup;
+  }
   for (uint16_t i = 0; i < cells_count; ++i) {
     if (read_u16_be(database_file, CELL_POINTER_ARRAY_OFFSET + i * 2,
                     &cell_offsets[i]) != 0) {
@@ -199,21 +202,28 @@ static int print_tables(const char *database_file_path) {
   }
 
   char **tbl_names = malloc(sizeof(char *) * cells_count);
+  if (tbl_names == NULL) {
+    goto free_cell_offsets;
+  }
   size_t parsed_tbl_names_count = 0;
   for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
     uint16_t cell_offset = cell_offsets[cell_idx];
     size_t record_size;
     long record_size_consumed;
-    read_varint(database_file, cell_offset, &record_size,
-                &record_size_consumed); // TODO: if err
+    if (read_varint(database_file, cell_offset, &record_size,
+                    &record_size_consumed) != 0) {
+      goto free_tbl_names;
+    }
 
     fprintf(stderr, "record size: %zu\n", record_size);
 
     long rowid_offset = cell_offset + record_size_consumed;
     size_t rowid;
     long rowid_consumed;
-    read_varint(database_file, rowid_offset, &rowid,
-                &rowid_consumed); // TODO: if err
+    if (read_varint(database_file, rowid_offset, &rowid, &rowid_consumed) !=
+        0) {
+      goto free_tbl_names;
+    }
 
     fprintf(stderr, "rowid: %zu\n", rowid);
 
@@ -221,8 +231,10 @@ static int print_tables(const char *database_file_path) {
     long record_offset = rowid_offset + rowid_consumed;
     size_t record_header_size;
     long record_header_size_consumed;
-    read_varint(database_file, record_offset, &record_header_size,
-                &record_header_size_consumed); // TODO: if err
+    if (read_varint(database_file, record_offset, &record_header_size,
+                    &record_header_size_consumed) != 0) {
+      goto free_tbl_names;
+    }
 
     fprintf(stderr, "record header size: %zu\n", record_header_size);
 
@@ -235,11 +247,14 @@ static int print_tables(const char *database_file_path) {
     while (record_header_consumed < record_header_size) {
       size_t serial_type;
       long serial_type_consumed;
-      read_varint(database_file, record_offset + record_header_consumed,
-                  &serial_type,
-                  &serial_type_consumed); // TODO: if err
+      if (read_varint(database_file, record_offset + record_header_consumed,
+                      &serial_type, &serial_type_consumed) != 0) {
+        goto free_tbl_names;
+      }
       size_t content_size;
-      calc_serial_type_size(serial_type, &content_size); // TODO: if err
+      if (calc_serial_type_size(serial_type, &content_size) != 0) {
+        goto free_tbl_names;
+      }
 
       // save content_size
       columns[column_idx] = content_size;
@@ -255,9 +270,15 @@ static int print_tables(const char *database_file_path) {
     size_t tbl_name_offset = columns[0] + columns[1];
     size_t tbl_name_size = columns[2];
     char *tbl_name = malloc(sizeof(char) * (tbl_name_size + 1));
-    read_tbl_name(database_file,
-                  record_offset + record_header_size + tbl_name_offset,
-                  tbl_name_size, tbl_name); // TODO: if err
+    if (tbl_name == NULL) {
+      goto free_tbl_names;
+    }
+    if (read_tbl_name(database_file,
+                      record_offset + record_header_size + tbl_name_offset,
+                      tbl_name_size, tbl_name) != 0) {
+      free(tbl_name);
+      goto free_tbl_names;
+    }
     tbl_names[cell_idx] = tbl_name;
     ++parsed_tbl_names_count;
   }
