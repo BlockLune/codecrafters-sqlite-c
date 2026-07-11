@@ -231,7 +231,7 @@ static int print_tables(const char *database_file_path) {
 
     // parse header
     size_t record_header_consumed = record_header_size_consumed;
-    while (record_header_consumed < record_size && column_idx < 5) {
+    while (record_header_consumed < record_header_size) {
       size_t serial_type;
       long serial_type_consumed;
       read_varint(database_file, record_offset + record_header_consumed,
