@@ -199,6 +199,7 @@ static int print_tables(const char *database_file_path) {
   }
 
   char **tbl_names = malloc(sizeof(char *) * cells_count);
+  size_t parsed_tbl_names_count = 0;
   for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
     uint16_t cell_offset = cell_offsets[cell_idx];
     size_t record_size;
@@ -238,7 +239,7 @@ static int print_tables(const char *database_file_path) {
                   &serial_type,
                   &serial_type_consumed); // TODO: if err
       size_t content_size;
-      calc_serial_type_size(serial_type, &content_size); // if err
+      calc_serial_type_size(serial_type, &content_size); // TODO: if err
 
       // save content_size
       columns[column_idx] = content_size;
@@ -247,7 +248,7 @@ static int print_tables(const char *database_file_path) {
       fprintf(stderr, "column idx: %zu, serial type: %zu, content size: %zu\n",
               column_idx, serial_type, content_size);
 
-      record_header_consumed += serial_type_consumed; // ???
+      record_header_consumed += serial_type_consumed;
     }
 
     // parse body
@@ -256,8 +257,9 @@ static int print_tables(const char *database_file_path) {
     char *tbl_name = malloc(sizeof(char) * (tbl_name_size + 1));
     read_tbl_name(database_file,
                   record_offset + record_header_size + tbl_name_offset,
-                  tbl_name_size, tbl_name);
+                  tbl_name_size, tbl_name); // TODO: if err
     tbl_names[cell_idx] = tbl_name;
+    ++parsed_tbl_names_count;
   }
 
   for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
@@ -267,6 +269,9 @@ static int print_tables(const char *database_file_path) {
   result = 0;
 
 free_tbl_names:
+  for (size_t i = 0; i < parsed_tbl_names_count; ++i) {
+    free(tbl_names[i]);
+  }
   free(tbl_names);
 free_cell_offsets:
   free(cell_offsets);
