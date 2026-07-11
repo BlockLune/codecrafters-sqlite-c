@@ -12,7 +12,7 @@ static int read_u16_be(FILE *file, long offset, uint16_t *value) {
   if (fseek(file, offset, SEEK_SET) != 0) {
     return -1;
   }
-  if (fread(buf, sizeof(buf), 1, file) != 0) {
+  if (fread(buf, sizeof(buf), 1, file) != 1) {
     return -1;
   }
   *value = ((uint16_t)buf[0] << 8) | buf[1];
@@ -35,7 +35,7 @@ static int print_dbinfo(const char *database_file_path) {
     fprintf(stderr, "Failed to read page size.\n");
     goto cleanup;
   }
-  size_t page_size = raw_page_size == 1 ? 65535 : raw_page_size;
+  size_t page_size = raw_page_size == 1 ? 65536 : raw_page_size;
   printf("database page size: %zu\n", page_size);
 
   // The `sqlite_schema` table is always stored on page 1.
@@ -50,6 +50,7 @@ static int print_dbinfo(const char *database_file_path) {
   // In this challenge, we assume that the database contains only tables - no
   // indexes, views, or other objects.
   printf("number of tables: %u\n", cells_count);
+  result = 0;
 
 cleanup:
   fclose(database_file);
