@@ -57,10 +57,15 @@ cleanup:
   return result;
 }
 
+static int print_tables(const char *database_file_path) {
+  // TODO: implement print_tables
+  return -1;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 3) {
     fprintf(stderr, "Usage: ./your_program.sh <database path> <command>\n");
-    return 1;
+    return EXIT_FAILURE;
   }
 
   fprintf(stderr, "====== CodeCrafters SQLite C ======\n");
@@ -70,8 +75,12 @@ int main(int argc, char *argv[]) {
 
   if (strcmp(command, ".dbinfo") == 0) {
     return print_dbinfo(database_file_path) == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
-  } else {
-    fprintf(stderr, "Unknown command %s\n", command);
-    return EXIT_FAILURE;
   }
+
+  if (strcmp(command, ".tables") == 0) {
+    return print_tables(database_file_path) == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
+
+  fprintf(stderr, "Unknown command %s\n", command);
+  return EXIT_FAILURE;
 }
