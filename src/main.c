@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SQLITE_PAGE_SIZE_OFFSET 16
+#define SQLITE_HEADER_SIZE 100
+#define BTREE_CELL_COUNT_OFFSET 3
+
 static int read_u16_be(FILE *file, long offset, uint16_t *value) {
   uint8_t buf[2];
   if (fseek(file, offset, SEEK_SET) != 0) {
@@ -25,7 +29,6 @@ static int print_dbinfo(const char *database_file_path) {
   int result = -1;
   // Skip the first 16 bytes of the header, which is "SQLite format 3"
   // followed by a null terminator.
-  const size_t SQLITE_PAGE_SIZE_OFFSET = 16;
   uint16_t raw_page_size;
   if (read_u16_be(database_file, SQLITE_PAGE_SIZE_OFFSET, &raw_page_size) !=
       0) {
@@ -38,10 +41,9 @@ static int print_dbinfo(const char *database_file_path) {
   // The `sqlite_schema` table is always stored on page 1.
   // The first 100 bytes of page 1 contain the database header, so the actual
   // B-tree page starts at offset 100.
-  const size_t SQLITE_SCHEMA_BTREE_OFFSET = 100;
-  const size_t N_CELLLS_OFFSET = SQLITE_SCHEMA_BTREE_OFFSET + 3;
   uint16_t cells_count;
-  if (read_u16_be(database_file, N_CELLLS_OFFSET, &cells_count) != 0) {
+  if (read_u16_be(database_file, SQLITE_HEADER_SIZE + BTREE_CELL_COUNT_OFFSET,
+                  &cells_count) != 0) {
     fprintf(stderr, "Failed to read cells count.\n");
     goto cleanup;
   }
