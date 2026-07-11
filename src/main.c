@@ -9,6 +9,7 @@ The `sqlite_schema` table is always stored on page 1.
 The first 100 bytes of page 1 contain the database header, so the actual
 B-tree page starts at offset 100.
 
+```
 first page:
 offset +0    sqlite header                  100 bytes
 offset +100  btree header                   8 bytes
@@ -25,10 +26,17 @@ offset +1    first freeblock                2 bytes
 offset +3    number of cells                2 bytes
 offset +5    start of cell content          2 bytes
 offset +7    fragmented bytes               1 byte
+```
+
+More resources:
+- <https://www.sqlite.org/fileformat.html>
+- <https://fly.io/blog/sqlite-internals-btree>
+- <https://link.springer.com/content/pdf/10.1007/978-3-030-98467-0_5.pdf>
 */
 
 #define PAGE_SIZE_OFFSET 16
 #define CELLS_COUNT_OFFSET 103
+#define CELL_POINTER_ARRAY_OFFSET 108
 
 static int read_u16_be(FILE *file, long offset, uint16_t *value) {
   uint8_t buf[2];
@@ -39,6 +47,28 @@ static int read_u16_be(FILE *file, long offset, uint16_t *value) {
     return -1;
   }
   *value = ((uint16_t)buf[0] << 8) | buf[1];
+  return 0;
+}
+
+static int read_varint(FILE *file, long offset, size_t *value, long *consumed) {
+  uint8_t buf;
+  if (fseek(file, offset, SEEK_SET) != 0) {
+    return -1;
+  }
+
+  _Bool more_flag = 1;
+  *value = 0;
+  *consumed = 0;
+  while (more_flag) {
+    if (fread(&buf, sizeof(buf), 1, file) != 1) {
+      return -1;
+    }
+    more_flag = (buf & 0x80) == 0x80;
+    uint8_t number_part = buf & 0x7f;
+    *value = ((*value) << 7) | number_part;
+    ++(*consumed);
+  }
+
   return 0;
 }
 
@@ -81,6 +111,7 @@ static int print_dbinfo(const char *database_file_path) {
   // In this challenge, we assume that the database contains only tables - no
   // indexes, views, or other objects.
   printf("number of tables: %u\n", cells_count);
+
   result = 0;
 
 cleanup:
@@ -89,8 +120,63 @@ cleanup:
 }
 
 static int print_tables(const char *database_file_path) {
-  // TODO: implement print_tables
-  return -1;
+  FILE *database_file = fopen(database_file_path, "rb");
+  if (!database_file) {
+    fprintf(stderr, "Failed to open the database file.\n");
+    return -1;
+  }
+
+  int result = -1;
+
+  uint16_t cells_count;
+  if (get_cells_count(database_file, &cells_count)) {
+    fprintf(stderr, "Failed to read cells count.\n");
+    goto cleanup;
+  }
+
+  uint16_t *cell_offsets = malloc(sizeof(uint16_t) * cells_count);
+  for (uint16_t i = 0; i < cells_count; ++i) {
+    if (read_u16_be(database_file, CELL_POINTER_ARRAY_OFFSET + i * 2,
+                    &cell_offsets[i]) != 0) {
+      fprintf(stderr, "Failed to read cell pointer at index %u.\n", i);
+      goto free_mem;
+    }
+  }
+
+  for (uint16_t i = 0; i < cells_count; ++i) {
+    uint16_t cell_offset = cell_offsets[i];
+    size_t record_size;
+    long record_size_consumed;
+    read_varint(database_file, cell_offset, &record_size,
+                &record_size_consumed); // TODO: if err
+
+    long rowid_offset = cell_offset + record_size_consumed;
+    size_t rowid;
+    long rowid_consumed;
+    read_varint(database_file, rowid_offset, &rowid,
+                &rowid_consumed); // TODO: if err
+
+    // read record header and body
+    long record_offset = rowid_offset + rowid_consumed;
+    size_t record_consumed = 0;
+    while (record_consumed <= record_size) {
+      size_t record_header_size;
+      long record_header_size_consumed;
+      read_varint(database_file, record_offset + record_consumed,
+                  &record_header_size,
+                  &record_header_size_consumed); // TODO: if err
+
+      // TODO: parse header
+    }
+  }
+
+  result = 0;
+
+free_mem:
+  free(cell_offsets);
+cleanup:
+  fclose(database_file);
+  return result;
 }
 
 int main(int argc, char *argv[]) {
