@@ -33,23 +33,23 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    // Skip the first 16 bytes of the header, which is "SQLite format 3" + null
-    // terminator
+    // Skip the first 16 bytes of the header, which is "SQLite format 3"
+    // followed by a null terminator.
     const size_t SQLITE_PAGE_SIZE_OFFSET = 16;
     uint16_t raw_page_size;
     read_u16_be(database_file, SQLITE_PAGE_SIZE_OFFSET, &raw_page_size);
     size_t page_size = raw_page_size == 1 ? 65535 : raw_page_size;
     printf("database page size: %zu\n", page_size);
 
-    // The `sqlite_schema` page is always page 1
-    // First 100 bytes of page 1 is database header, so the actual btree page
-    // starts from 100
+    // The `sqlite_schema` table is always stored on page 1.
+    // The first 100 bytes of page 1 contain the database header, so the actual
+    // B-tree page starts at offset 100.
     const size_t SQLITE_SCHEMA_BTREE_OFFSET = 100;
     const size_t N_CELLLS_OFFSET = SQLITE_SCHEMA_BTREE_OFFSET + 3;
     uint16_t cells_count;
     read_u16_be(database_file, N_CELLLS_OFFSET, &cells_count);
-    // In this challenge we assume that there is only tables in db, no index,
-    // view, etc.
+    // In this challenge, we assume that the database contains only tables - no
+    // indexes, views, or other objects.
     printf("number of tables: %u\n", cells_count);
 
     fclose(database_file);
