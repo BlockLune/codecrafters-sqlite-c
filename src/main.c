@@ -3,6 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int read_u16_be(FILE *file, long offset, uint16_t *value) {
+  uint8_t buf[2];
+  if (fseek(file, offset, SEEK_SET) != 0) {
+    return -1;
+  }
+  if (fread(buf, sizeof(buf), 1, file) != 0) {
+    return -1;
+  }
+  *value = ((uint16_t)buf[0] << 8) | buf[1];
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 3) {
     fprintf(stderr, "Usage: ./your_program.sh <database path> <command>\n");
@@ -23,21 +35,22 @@ int main(int argc, char *argv[]) {
 
     // Skip the first 16 bytes of the header, which is "SQLite format 3" + null
     // terminator
-    fseek(database_file, 16, SEEK_SET);
-    unsigned char buffer[2];
-    fread(buffer, 1, 2, database_file);
-    uint16_t page_size = (buffer[0] << 8) | buffer[1];
-    printf("database page size: %u\n", page_size);
+    const size_t SQLITE_PAGE_SIZE_OFFSET = 16;
+    uint16_t raw_page_size;
+    read_u16_be(database_file, SQLITE_PAGE_SIZE_OFFSET, &raw_page_size);
+    size_t page_size = raw_page_size == 1 ? 65535 : raw_page_size;
+    printf("database page size: %zu\n", page_size);
 
     // The `sqlite_schema` page is always page 1
     // First 100 bytes of page 1 is database header, so the actual btree page
     // starts from 100
     const size_t SQLITE_SCHEMA_BTREE_OFFSET = 100;
     const size_t N_CELLLS_OFFSET = SQLITE_SCHEMA_BTREE_OFFSET + 3;
-    fseek(database_file, N_CELLLS_OFFSET, SEEK_SET);
-    fread(buffer, 1, 2, database_file);
-    uint16_t n_cells = (buffer[0] << 8) | buffer[1];
-    printf("number of tables: %u\n", n_cells);
+    uint16_t cells_count;
+    read_u16_be(database_file, N_CELLLS_OFFSET, &cells_count);
+    // In this challenge we assume that there is only tables in db, no index,
+    // view, etc.
+    printf("number of tables: %u\n", cells_count);
 
     fclose(database_file);
   } else {
