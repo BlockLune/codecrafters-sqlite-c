@@ -8,6 +8,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  fprintf(stderr, "====== CodeCrafters SQLite C ======\n");
+
   const char *database_file_path = argv[1];
   const char *command = argv[2];
 
@@ -18,16 +20,23 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    fseek(database_file, 16, SEEK_SET); // Skip the first 16 bytes of the header
+    // Skip the first 16 bytes of the header, which is "SQLite format 3" + null
+    // terminator
+    fseek(database_file, 16, SEEK_SET);
     unsigned char buffer[2];
     fread(buffer, 1, 2, database_file);
-    unsigned short page_size = (buffer[1] | (buffer[0] << 8));
-
-    // You can use print statements as follows for debugging, they'll be visible
-    // when running tests.
-    fprintf(stderr, "Logs from your program will appear here!\n");
-
+    uint16_t page_size = (buffer[0] << 8) | buffer[1];
     printf("database page size: %u\n", page_size);
+
+    // The `sqlite_schema` page is always page 1
+    // First 100 bytes of page 1 is database header, so the actual btree page
+    // starts from 100
+    const size_t SQLITE_SCHEMA_BTREE_OFFSET = 100;
+    const size_t N_CELLLS_OFFSET = SQLITE_SCHEMA_BTREE_OFFSET + 3;
+    fseek(database_file, N_CELLLS_OFFSET, SEEK_SET);
+    fread(buffer, 1, 2, database_file);
+    uint16_t n_cells = (buffer[0] << 8) | buffer[1];
+    printf("number of tables: %u\n", n_cells);
 
     fclose(database_file);
   } else {
