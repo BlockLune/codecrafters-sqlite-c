@@ -72,6 +72,49 @@ static int read_varint(FILE *file, long offset, size_t *value, long *consumed) {
   return 0;
 }
 
+static int calc_serial_type_size(size_t serial_type, size_t *content_size) {
+  if (serial_type == 0) {
+    *content_size = 0;
+  }
+  if (serial_type == 1) {
+    *content_size = 1;
+  }
+  if (serial_type == 2) {
+    *content_size = 2;
+  }
+  if (serial_type == 3) {
+    *content_size = 3;
+  }
+  if (serial_type == 4) {
+    *content_size = 4;
+  }
+  if (serial_type == 5) {
+    *content_size = 6;
+  }
+  if (serial_type == 6) {
+    *content_size = 8;
+  }
+  if (serial_type == 7) {
+    *content_size = 8;
+  }
+  if (serial_type == 8) {
+    *content_size = 0;
+  }
+  if (serial_type == 9) {
+    *content_size = 0;
+  }
+  if (serial_type == 10 || serial_type == 11) {
+    return -1;
+  }
+  if (serial_type >= 12 && serial_type % 2 == 0) {
+    *content_size = (serial_type - 12) / 2;
+  }
+  if (serial_type >= 13 && serial_type % 2 != 0) {
+    *content_size = (serial_type - 13) / 2;
+  }
+  return 0;
+}
+
 static int get_page_size(FILE *database_file, size_t *page_size) {
   uint16_t raw_page_size;
   if (read_u16_be(database_file, PAGE_SIZE_OFFSET, &raw_page_size) != 0) {
@@ -85,6 +128,18 @@ static int get_cells_count(FILE *database_file, uint16_t *cells_count) {
   if (read_u16_be(database_file, CELLS_COUNT_OFFSET, cells_count) != 0) {
     return -1;
   }
+  return 0;
+}
+
+static int read_tbl_name(FILE *database_file, long offset, size_t size,
+                         char *dest) {
+  if (fseek(database_file, offset, SEEK_SET) != 0) {
+    return -1;
+  }
+  if (fread(dest, 1, size, database_file) != size) {
+    return -1;
+  }
+  dest[size] = '\0';
   return 0;
 }
 
@@ -139,16 +194,19 @@ static int print_tables(const char *database_file_path) {
     if (read_u16_be(database_file, CELL_POINTER_ARRAY_OFFSET + i * 2,
                     &cell_offsets[i]) != 0) {
       fprintf(stderr, "Failed to read cell pointer at index %u.\n", i);
-      goto free_mem;
+      goto free_cell_offsets;
     }
   }
 
-  for (uint16_t i = 0; i < cells_count; ++i) {
-    uint16_t cell_offset = cell_offsets[i];
+  char **tbl_names = malloc(sizeof(char *) * cells_count);
+  for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
+    uint16_t cell_offset = cell_offsets[cell_idx];
     size_t record_size;
     long record_size_consumed;
     read_varint(database_file, cell_offset, &record_size,
                 &record_size_consumed); // TODO: if err
+
+    fprintf(stderr, "record size: %zu\n", record_size);
 
     long rowid_offset = cell_offset + record_size_consumed;
     size_t rowid;
@@ -156,23 +214,61 @@ static int print_tables(const char *database_file_path) {
     read_varint(database_file, rowid_offset, &rowid,
                 &rowid_consumed); // TODO: if err
 
+    fprintf(stderr, "rowid: %zu\n", rowid);
+
     // read record header and body
     long record_offset = rowid_offset + rowid_consumed;
-    size_t record_consumed = 0;
-    while (record_consumed <= record_size) {
-      size_t record_header_size;
-      long record_header_size_consumed;
-      read_varint(database_file, record_offset + record_consumed,
-                  &record_header_size,
-                  &record_header_size_consumed); // TODO: if err
+    size_t record_header_size;
+    long record_header_size_consumed;
+    read_varint(database_file, record_offset, &record_header_size,
+                &record_header_size_consumed); // TODO: if err
 
-      // TODO: parse header
+    fprintf(stderr, "record header size: %zu\n", record_header_size);
+
+    // we know here we have 5 columns
+    size_t columns[5];
+    size_t column_idx = 0;
+
+    // parse header
+    size_t record_header_consumed = record_header_size_consumed;
+    while (record_header_consumed < record_size && column_idx < 5) {
+      size_t serial_type;
+      long serial_type_consumed;
+      read_varint(database_file, record_offset + record_header_consumed,
+                  &serial_type,
+                  &serial_type_consumed); // TODO: if err
+      size_t content_size;
+      calc_serial_type_size(serial_type, &content_size); // if err
+
+      // save content_size
+      columns[column_idx] = content_size;
+      ++column_idx;
+
+      fprintf(stderr, "column idx: %zu, serial type: %zu, content size: %zu\n",
+              column_idx, serial_type, content_size);
+
+      record_header_consumed += serial_type_consumed; // ???
     }
+
+    // parse body
+    size_t tbl_name_offset = columns[0] + columns[1];
+    size_t tbl_name_size = columns[2];
+    char *tbl_name = malloc(sizeof(char) * (tbl_name_size + 1));
+    read_tbl_name(database_file,
+                  record_offset + record_header_size + tbl_name_offset,
+                  tbl_name_size, tbl_name);
+    tbl_names[cell_idx] = tbl_name;
   }
 
+  for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
+    printf("%s ", tbl_names[cell_idx]);
+  }
+  printf("\n");
   result = 0;
 
-free_mem:
+free_tbl_names:
+  free(tbl_names);
+free_cell_offsets:
   free(cell_offsets);
 cleanup:
   fclose(database_file);
