@@ -12,23 +12,35 @@ int read_u16_be(const uint8_t *const data, const size_t size,
 int read_varint(const uint8_t *const data, const size_t size,
                 const size_t offset, size_t *const value,
                 size_t *const consumed) {
-  uint8_t buf;
-  _Bool more_flag = 1;
-  *value = 0;
-  *consumed = 0;
-  while (more_flag) {
-    size_t idx = offset + (*consumed);
-    if (idx >= size) {
-      return -1;
-    }
-    buf = data[idx];
-    more_flag = (buf & 0x80) == 0x80;
-    uint8_t number_part = buf & 0x7f;
-    *value = ((*value) << 7) | number_part;
-    ++(*consumed);
+  if (offset >= size) {
+    return -1;
   }
 
-  return 0;
+  *value = 0;
+  *consumed = 0;
+
+  // A SQLite varint contains at most nine bytes.
+  while (*consumed < 9) {
+    if (*consumed >= size - offset) {
+      return -1;
+    }
+
+    uint8_t byte = data[offset + *consumed];
+    ++(*consumed);
+
+    // The ninth byte of a SQLite varint contributes all eight bits.
+    if (*consumed == 9) {
+      *value = (*value << 8) | byte;
+      return 0;
+    }
+
+    *value = (*value << 7) | (byte & 0x7f);
+    if ((byte & 0x80) == 0) {
+      return 0;
+    }
+  }
+
+  return -1;
 }
 
 int calc_serial_type_size(const size_t serial_type,
