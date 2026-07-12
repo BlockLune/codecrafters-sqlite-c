@@ -33,27 +33,21 @@ static int print_tables(const Database *const db) {
     goto cleanup;
   }
 
-  uint16_t *cell_offsets = malloc(sizeof(uint16_t) * cells_count);
-  if (cell_offsets == NULL) {
+  char **tbl_names = malloc(sizeof(char *) * cells_count);
+  if (tbl_names == NULL) {
     goto cleanup;
   }
+  size_t parsed_tbl_names_count = 0;
   Cursor cell_pointer_array_cursor;
   cursor_init(&cell_pointer_array_cursor, db->data, db->size,
               CELL_POINTER_ARRAY_OFFSET);
   for (uint16_t i = 0; i < cells_count; ++i) {
-    if (cursor_read_u16_be(&cell_pointer_array_cursor, &cell_offsets[i]) != 0) {
+    uint16_t cell_offset;
+    if (cursor_read_u16_be(&cell_pointer_array_cursor, &cell_offset) != 0) {
       fprintf(stderr, "Failed to read cell pointer at index %u.\n", i);
-      goto free_cell_offsets;
+      goto free_tbl_names;
     }
-  }
 
-  char **tbl_names = malloc(sizeof(char *) * cells_count);
-  if (tbl_names == NULL) {
-    goto free_cell_offsets;
-  }
-  size_t parsed_tbl_names_count = 0;
-  for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
-    uint16_t cell_offset = cell_offsets[cell_idx];
     Cursor cell_cursor;
     cursor_init(&cell_cursor, db->data, db->size, cell_offset);
     size_t record_size;
@@ -62,14 +56,14 @@ static int print_tables(const Database *const db) {
       goto free_tbl_names;
     }
 
-    fprintf(stderr, "record size: %zu\n", record_size);
+    LOG("record size: %zu", record_size);
 
     size_t rowid;
     if (cursor_read_sqlite_varint(&cell_cursor, (uint64_t *)&rowid) != 0) {
       goto free_tbl_names;
     }
 
-    fprintf(stderr, "rowid: %zu\n", rowid);
+    LOG("rowid: %zu", rowid);
 
     // read record header and body
     size_t record_offset = cell_cursor.offset;
@@ -79,7 +73,7 @@ static int print_tables(const Database *const db) {
       goto free_tbl_names;
     }
 
-    fprintf(stderr, "record header size: %zu\n", record_header_size);
+    LOG("record header size: %zu", record_header_size);
 
     // we know here we have 5 columns
     size_t columns[5];
@@ -101,8 +95,8 @@ static int print_tables(const Database *const db) {
       columns[column_idx] = content_size;
       ++column_idx;
 
-      fprintf(stderr, "column idx: %zu, serial type: %zu, content size: %zu\n",
-              column_idx, serial_type, content_size);
+      LOG("column idx: %zu, serial type: %zu, content size: %zu", column_idx,
+          serial_type, content_size);
     }
 
     // parse body
@@ -118,7 +112,7 @@ static int print_tables(const Database *const db) {
       free(tbl_name);
       goto free_tbl_names;
     }
-    tbl_names[cell_idx] = tbl_name;
+    tbl_names[i] = tbl_name;
     ++parsed_tbl_names_count;
   }
 
@@ -133,8 +127,6 @@ free_tbl_names:
     free(tbl_names[i]);
   }
   free(tbl_names);
-free_cell_offsets:
-  free(cell_offsets);
 cleanup:
   return result;
 }
@@ -145,7 +137,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  fprintf(stderr, "====== CodeCrafters SQLite C ======\n");
+  LOG("====== CodeCrafters SQLite C ======");
 
   const char *database_file_path = argv[1];
   const char *command = argv[2];
