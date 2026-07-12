@@ -39,7 +39,9 @@ int database_open(Database *const db, const char *const path) {
 }
 
 void database_close(Database *const db) {
-  munmap((void *)db->data, db->size);
+  if (db->data != NULL) {
+    munmap((void *)db->data, db->size);
+  }
   if (db->fd != -1) {
     close(db->fd);
   }
