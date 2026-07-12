@@ -10,7 +10,7 @@ typedef struct {
   size_t offset;
 } Cursor;
 
-int cursor_init(Cursor *const cursor, const uint8_t *const data,
+void cursor_init(Cursor *const cursor, const uint8_t *const data,
                 const size_t size, const size_t offset);
 
 int cursor_seek(Cursor *const cursor, const size_t offset);

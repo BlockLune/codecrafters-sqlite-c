@@ -4,16 +4,15 @@
 
 #define SQLITE_VARINT_MAX_LEN 9
 
-int cursor_init(Cursor *const cursor, const uint8_t *const data,
-                const size_t size, const size_t offset) {
+void cursor_init(Cursor *const cursor, const uint8_t *const data,
+                 const size_t size, const size_t offset) {
   cursor->data = data;
   cursor->size = size;
   cursor->offset = offset;
-  return 0;
 }
 
 int cursor_seek(Cursor *const cursor, const size_t offset) {
-  if (offset >= cursor->size) {
+  if (offset > cursor->size) {
     return -1;
   }
   cursor->offset = offset;
@@ -21,10 +20,7 @@ int cursor_seek(Cursor *const cursor, const size_t offset) {
 }
 
 int cursor_read(Cursor *const cursor, void *const dest, const size_t size) {
-  if (cursor->offset >= cursor->size) {
-    return -1;
-  }
-  if (size > cursor->size - cursor->offset) {
+  if (cursor->offset > cursor->size || size > cursor->size - cursor->offset) {
     return -1;
   }
   void *src = (void *)cursor->data + cursor->offset;
