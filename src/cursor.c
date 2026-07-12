@@ -6,9 +6,6 @@
 
 int cursor_init(Cursor *const cursor, const uint8_t *const data,
                 const size_t size, const size_t offset) {
-  if (offset >= size) {
-    return -1;
-  }
   cursor->data = data;
   cursor->size = size;
   cursor->offset = offset;
@@ -24,6 +21,9 @@ int cursor_seek(Cursor *const cursor, const size_t offset) {
 }
 
 int cursor_read(Cursor *const cursor, void *const dest, const size_t size) {
+  if (cursor->offset >= cursor->size) {
+    return -1;
+  }
   if (size > cursor->size - cursor->offset) {
     return -1;
   }
@@ -39,8 +39,7 @@ int cursor_read_u8(Cursor *const cursor, uint8_t *const value) {
 
 int cursor_read_u16_be(Cursor *const cursor, uint16_t *const value) {
   uint8_t buf[2];
-  if (cursor_read(cursor, &buf[0], sizeof(uint8_t)) != 0 ||
-      cursor_read(cursor, &buf[1], sizeof(uint8_t))) {
+  if (cursor_read(cursor, buf, sizeof(buf)) != 0) {
     return -1;
   }
   *value = ((uint16_t)buf[0] << 8) | buf[1];
