@@ -23,7 +23,7 @@ int cursor_read(Cursor *const cursor, void *const dest, const size_t size) {
   if (cursor->offset > cursor->size || size > cursor->size - cursor->offset) {
     return -1;
   }
-  void *src = (void *)cursor->data + cursor->offset;
+  const uint8_t *src = cursor->data + cursor->offset;
   memcpy(dest, src, size);
   cursor->offset += size;
   return 0;
