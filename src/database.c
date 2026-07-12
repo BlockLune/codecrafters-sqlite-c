@@ -1,5 +1,5 @@
 #include "database.h"
-#include "utils.h"
+#include "cursor.h"
 #include <fcntl.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -46,8 +46,10 @@ void database_close(Database *const db) {
 }
 
 int database_page_size(const Database *const db, size_t *const page_size) {
+  Cursor cursor;
+  cursor_init(&cursor, db->data, db->size, PAGE_SIZE_OFFSET);
   uint16_t raw_page_size;
-  if (read_u16_be(db->data, db->size, PAGE_SIZE_OFFSET, &raw_page_size) != 0) {
+  if (cursor_read_u16_be(&cursor, &raw_page_size) != 0) {
     return -1;
   }
   *page_size = raw_page_size == 1 ? 65536 : raw_page_size;
@@ -56,7 +58,9 @@ int database_page_size(const Database *const db, size_t *const page_size) {
 
 int database_cells_count(const Database *const db,
                          uint16_t *const cells_count) {
-  if (read_u16_be(db->data, db->size, CELLS_COUNT_OFFSET, cells_count) != 0) {
+  Cursor cursor;
+  cursor_init(&cursor, db->data, db->size, CELLS_COUNT_OFFSET);
+  if (cursor_read_u16_be(&cursor, cells_count) != 0) {
     return -1;
   }
   return 0;

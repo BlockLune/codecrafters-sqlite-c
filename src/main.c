@@ -1,3 +1,4 @@
+#include "cursor.h"
 #include "database.h"
 #include "utils.h"
 #include <stdint.h>
@@ -36,9 +37,11 @@ static int print_tables(const Database *const db) {
   if (cell_offsets == NULL) {
     goto cleanup;
   }
+  Cursor cell_pointer_array_cursor;
+  cursor_init(&cell_pointer_array_cursor, db->data, db->size,
+              CELL_POINTER_ARRAY_OFFSET);
   for (uint16_t i = 0; i < cells_count; ++i) {
-    if (read_u16_be(db->data, db->size, CELL_POINTER_ARRAY_OFFSET + i * 2,
-                    &cell_offsets[i]) != 0) {
+    if (cursor_read_u16_be(&cell_pointer_array_cursor, &cell_offsets[i]) != 0) {
       fprintf(stderr, "Failed to read cell pointer at index %u.\n", i);
       goto free_cell_offsets;
     }
@@ -51,31 +54,28 @@ static int print_tables(const Database *const db) {
   size_t parsed_tbl_names_count = 0;
   for (uint16_t cell_idx = 0; cell_idx < cells_count; ++cell_idx) {
     uint16_t cell_offset = cell_offsets[cell_idx];
+    Cursor cell_cursor;
+    cursor_init(&cell_cursor, db->data, db->size, cell_offset);
     size_t record_size;
-    size_t record_size_consumed;
-    if (read_varint(db->data, db->size, cell_offset, &record_size,
-                    &record_size_consumed) != 0) {
+    if (cursor_read_sqlite_varint(&cell_cursor, (uint64_t *)&record_size) !=
+        0) {
       goto free_tbl_names;
     }
 
     fprintf(stderr, "record size: %zu\n", record_size);
 
-    long rowid_offset = cell_offset + record_size_consumed;
     size_t rowid;
-    size_t rowid_consumed;
-    if (read_varint(db->data, db->size, rowid_offset, &rowid,
-                    &rowid_consumed) != 0) {
+    if (cursor_read_sqlite_varint(&cell_cursor, (uint64_t *)&rowid) != 0) {
       goto free_tbl_names;
     }
 
     fprintf(stderr, "rowid: %zu\n", rowid);
 
     // read record header and body
-    long record_offset = rowid_offset + rowid_consumed;
+    size_t record_offset = cell_cursor.offset;
     size_t record_header_size;
-    size_t record_header_size_consumed;
-    if (read_varint(db->data, db->size, record_offset, &record_header_size,
-                    &record_header_size_consumed) != 0) {
+    if (cursor_read_sqlite_varint(&cell_cursor,
+                                  (uint64_t *)&record_header_size) != 0) {
       goto free_tbl_names;
     }
 
@@ -86,13 +86,10 @@ static int print_tables(const Database *const db) {
     size_t column_idx = 0;
 
     // parse header
-    size_t record_header_consumed = record_header_size_consumed;
-    while (record_header_consumed < record_header_size) {
+    while (column_idx < 5) {
       size_t serial_type;
-      size_t serial_type_consumed;
-      if (read_varint(db->data, db->size,
-                      record_offset + record_header_consumed, &serial_type,
-                      &serial_type_consumed) != 0) {
+      if (cursor_read_sqlite_varint(&cell_cursor, (uint64_t *)&serial_type) !=
+          0) {
         goto free_tbl_names;
       }
       size_t content_size;
@@ -106,8 +103,6 @@ static int print_tables(const Database *const db) {
 
       fprintf(stderr, "column idx: %zu, serial type: %zu, content size: %zu\n",
               column_idx, serial_type, content_size);
-
-      record_header_consumed += serial_type_consumed;
     }
 
     // parse body
